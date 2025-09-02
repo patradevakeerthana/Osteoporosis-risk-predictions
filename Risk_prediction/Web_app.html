@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Osteoporosis Risk Checker</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    :root {
+      --brand-1: #6366f1;
+      --brand-2: #8b5cf6;
+      --card: #ffffff;
+      --panel: #fef3c7;
+      --panel-2: #fde68a;
+    }
+    body{font-family:'Inter',sans-serif;background:linear-gradient(135deg,#e8f5e9,#c8e6c9) min(100vh,100%);}
+    .container{max-width:1000px}
+    .card{background:var(--card);border-radius:1.5rem;box-shadow:0 10px 30px -5px rgba(0,0,0,.1),0 4px 12px -2px rgba(0,0,0,.05)}
+    .panel{background:linear-gradient(180deg,var(--panel),var(--panel-2));border-radius:1.25rem}
+    .btn{display:inline-flex;align-items:center;justify-content:center;border-radius:9999px;font-weight:600;padding:.7rem 1.1rem}
+    .btn-primary{background:linear-gradient(90deg,var(--brand-1),var(--brand-2));color:#fff}
+    .btn-outline{border:2px solid #d1d5db;color:#374151;background:#fff}
+    .tab-pill{border-radius:9999px;padding:.5rem 1rem;font-weight:600}
+    .tab-pill.active{background:linear-gradient(90deg,var(--brand-1),var(--brand-2));color:#fff}
+    .field{width:100%;padding:.85rem 1rem;border:1px solid #d1d5db;border-radius:.85rem;background:#f9fafb}
+    .field:focus{outline:none;border-color:var(--brand-1);box-shadow:0 0 0 4px rgba(99,102,241,.25)}
+    .meter{height:12px;border-radius:9999px;background:#e5e7eb;overflow:hidden}
+    .meter > span{display:block;height:100%;background:linear-gradient(90deg,#22c55e,#f59e0b,#ef4444)}
+    .risk-low{color:#10b981}.risk-hi{color:#ef4444}
+    .shadow-soft{box-shadow:0 6px 18px rgba(0,0,0,.08)}
+    .grid-3{display:grid;grid-template-columns:repeat(1,minmax(0,1fr));gap:1rem}
+    @media (min-width:768px){.grid-3{grid-template-columns:repeat(3,minmax(0,1fr))}}
+    canvas{image-rendering:pixelated}
+    .hidden{display:none}
+  </style>
+</head>
+<body class="p-6 flex justify-center">
+  <div class="container card p-8 space-y-8">
+    <header class="text-center space-y-2">
+      <h1 class="text-4xl font-extrabold text-gray-800">Osteoporosis Risk Checker</h1>
+      <p class="text-gray-500">Screening-oriented probability estimate (not a diagnosis).</p>
+      <div class="flex items-center justify-center gap-2">
+        <button id="publicTab" class="tab-pill active">General Public</button>
+        <button id="clinicianTab" class="tab-pill">Clinician / Researcher</button>
+      </div>
+    </header>
+
+    <!-- PUBLIC PAGE -->
+    <section id="publicPage">
+      <div class="panel p-6 space-y-6">
+        <p class="text-sm text-gray-700">
+          Enter a few details to get a quick estimate. Results are probabilistic and for education only.
+        </p>
+
+        <form id="riskForm" class="space-y-4">
+          <div class="grid-3">
+            <div>
+              <label class="text-sm font-semibold text-gray-700">Age (years)</label>
+              <input type="number" class="field" name="age" min="18" max="99" required/>
+            </div>
+            <div>
+              <label class="text-sm font-semibold text-gray-700">Gender</label>
+              <select class="field" name="gender" required>
+                <option value="">Select…</option>
+                <option value="1">Male</option>
+                <option value="2">Female</option>
+              </select>
+            </div>
+            <div>
+              <label class="text-sm font-semibold text-gray-700">BMI</label>
+              <input type="number" class="field" name="bmi" min="10" max="70" step="0.1" required/>
+            </div>
+            <div>
+              <label class="text-sm font-semibold text-gray-700">Alcohol (drinks/week)</label>
+              <input type="number" class="field" name="alcohol" min="0" step="1" value="0" required/>
+            </div>
+            <div>
+              <label class="text-sm font-semibold text-gray-700">Calcium (mg/day)</label>
+              <input type="number" class="field" name="calcium" min="0" step="10" value="1000" required/>
+            </div>
+            <div>
+              <label class="text-sm font-semibold text-gray-700">Prior Fracture</label>
+              <select class="field" name="fracture" required>
+                <option value="0">No</option>
+                <option value="1">Yes</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <button id="submitBtn" class="btn btn-primary shadow-soft" type="submit">Check My Risk</button>
+            <span id="spinner" class="text-sm text-gray-500 hidden">Calculating…</span>
+          </div>
+        </form>
+
+        <!-- RESULT CARD -->
+        <div id="resultCard" class="card p-5 space-y-3 hidden">
+          <div class="flex items-center justify-between">
+            <h3 class="text-lg font-semibold text-gray-800">Result</h3>
+            <span id="riskBadge" class="text-sm font-bold"></span>
+          </div>
+          <div class="space-y-2">
+            <div class="flex items-center justify-between text-sm text-gray-600">
+              <span>Predicted probability</span>
+              <span id="probText">—</span>
+            </div>
+            <div class="meter"><span id="probBar" style="width:0%"></span></div>
+          </div>
+          <p class="text-xs text-gray-500">
+            The ROC curve on the Clinician page is a model-level metric from your evaluation set and does not change per patient.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- CLINICIAN PAGE -->
+    <section id="clinicianPage" class="hidden space-y-6">
+      <!-- LOGIN -->
+      <div id="loginCard" class="card p-6 space-y-4">
+        <h3 class="text-xl font-bold text-gray-800">Clinician Access</h3>
+        <p class="text-gray-600 text-sm">Demo credentials → <code>admin</code> / <code>password</code></p>
+        <form id="loginForm" class="grid md:grid-cols-3 gap-3">
+          <input id="loginUser" class="field" placeholder="Username" required />
+          <input id="loginPass" class="field" type="password" placeholder="Password" required />
+          <button class="btn btn-primary" type="submit">Login</button>
+        </form>
+      </div>
+
+      <!-- DASHBOARD -->
+      <div id="dash" class="hidden space-y-4">
+        <div class="flex items-center justify-between">
+          <div class="flex gap-2">
+            <button data-tab="interp" class="tab-pill active">Interpretation</button>
+            <button data-tab="eval" class="tab-pill">Evaluation</button>
+            <button data-tab="audit" class="tab-pill">Audit Log</button>
+            <button data-tab="sys" class="tab-pill">System Info</button>
+          </div>
+          <button id="logoutBtn" class="btn btn-outline">Logout</button>
+        </div>
+
+        <div id="tab_interp" class="card p-5">
+          <h4 class="font-semibold text-gray-800 mb-2">Feature importance (illustrative)</h4>
+          <canvas id="fiChart" width="700" height="260"></canvas>
+        </div>
+
+        <div id="tab_eval" class="card p-5 hidden">
+          <div class="flex items-center justify-between">
+            <h4 class="font-semibold text-gray-800">ROC curve (model-level)</h4>
+            <small id="aucBadge" class="text-gray-500"></small>
+          </div>
+          <canvas id="rocChart" width="700" height="260"></canvas>
+        </div>
+
+        <div id="tab_audit" class="card p-5 hidden">
+          <h4 class="font-semibold text-gray-800 mb-2">Recent predictions</h4>
+          <div id="auditBox" class="h-48 overflow-auto text-sm text-gray-700 space-y-2"></div>
+        </div>
+
+        <div id="tab_sys" class="card p-5 hidden">
+          <h4 class="font-semibold text-gray-800 mb-3">System Info</h4>
+          <ul class="text-sm text-gray-700 list-disc pl-5 space-y-1">
+            <li>Frontend: plain HTML + Tailwind</li>
+            <li>Backend: Flask</li>
+            <li>Endpoints: <code>/predict_risk</code>, <code>/get_evaluation_data</code></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    // ====== CONFIG ======
+    const API_PREDICT = "http://127.0.0.1:5000/predict_risk";
+    const API_EVAL = "http://127.0.0.1:5000/get_evaluation_data";
+
+    // ====== PAGE TABS ======
+    const publicTab = document.getElementById('publicTab');
+    const clinicianTab = document.getElementById('clinicianTab');
+    const publicPage = document.getElementById('publicPage');
+    const clinicianPage = document.getElementById('clinicianPage');
+
+    function activateTop(tab){
+      publicTab.classList.toggle('active', tab==='public');
+      clinicianTab.classList.toggle('active', tab==='clin');
+      publicPage.classList.toggle('hidden', tab!=='public');
+      clinicianPage.classList.toggle('hidden', tab!=='clin');
+    }
+    publicTab.onclick = () => activateTop('public');
+    clinicianTab.onclick = () => activateTop('clin');
+
+    // ====== CLINICIAN LOGIN / DASH ======
+    const loginCard = document.getElementById('loginCard');
+    const loginForm = document.getElementById('loginForm');
+    const dash = document.getElementById('dash');
+    const logoutBtn = document.getElementById('logoutBtn');
+
+    let isLoggedIn = false;
+
+    function setClinicianState(state){
+      isLoggedIn = state;
+      loginCard.classList.toggle('hidden', isLoggedIn);
+      dash.classList.toggle('hidden', !isLoggedIn);
+      if(isLoggedIn){ drawFI(); drawROC(); }
+    }
+    loginForm.addEventListener('submit',(e)=>{
+      e.preventDefault();
+      const u = document.getElementById('loginUser').value.trim();
+      const p = document.getElementById('loginPass').value.trim();
+      if(u==='admin' && p==='password'){ setClinicianState(true); }
+      else alert('Invalid credentials');
+    });
+    logoutBtn.onclick = ()=> setClinicianState(false);
+
+    // ====== DASH SUB-TABS ======
+    const tabButtons = dash.querySelectorAll('.tab-pill');
+    const tabViews = {
+      interp: document.getElementById('tab_interp'),
+      eval:   document.getElementById('tab_eval'),
+      audit:  document.getElementById('tab_audit'),
+      sys:    document.getElementById('tab_sys'),
+    };
+    tabButtons.forEach(btn=>{
+      btn.addEventListener('click',()=>{
+        tabButtons.forEach(b=>b.classList.remove('active'));
+        btn.classList.add('active');
+        const key = btn.dataset.tab;
+        Object.entries(tabViews).forEach(([k,el])=> el.classList.toggle('hidden', k!==key));
+        if(key==='eval') drawROC();
+        if(key==='interp') drawFI();
+      });
+    });
+
+    //  PUBLIC FORM & RESULT 
+    const riskForm = document.getElementById('riskForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const spinner = document.getElementById('spinner');
+    const resultCard = document.getElementById('resultCard');
+    const probText = document.getElementById('probText');
+    const probBar = document.getElementById('probBar');
+    const riskBadge = document.getElementById('riskBadge');
+    const auditBox = document.getElementById('auditBox');
+
+    const auditLog = [];
+
+    riskForm.addEventListener('submit', async (e)=>{
+      e.preventDefault();
+      submitBtn.disabled = true; spinner.classList.remove('hidden');
+
+      const fd = new FormData(riskForm);
+      const data = {
+        age: Number(fd.get('age')),
+        gender: Number(fd.get('gender')),
+        bmi: Number(fd.get('bmi')),
+        alcohol: Number(fd.get('alcohol')),
+        calcium: Number(fd.get('calcium')),
+        fracture: Number(fd.get('fracture')),
+      };
+
+      try{
+        const res = await fetch(API_PREDICT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
+        const out = await res.json();
+        if(!res.ok || out.status!=='success'){ throw new Error(out.error||'Prediction failed'); }
+
+        const p = Number(out.prediction_proba)||0;
+        probText.textContent = (p*100).toFixed(1) + '%';
+        probBar.style.width = Math.max(0,Math.min(100,p*100)) + '%';
+        riskBadge.textContent = out.risk_text;
+        riskBadge.className = 'text-sm font-bold ' + (p>=0.3 ? 'risk-hi' : 'risk-low');
+        resultCard.classList.remove('hidden');
+
+        // audit
+        const row = `[${new Date().toLocaleString()}] Age ${data.age}, Sex ${data.gender===1?'M':'F'}, BMI ${data.bmi} → ${(p*100).toFixed(1)}% (${out.risk_text})`;
+        auditLog.unshift(row);
+        renderAudit();
+      }catch(err){
+        alert('Could not get prediction: ' + err.message);
+      }finally{
+        submitBtn.disabled = false; spinner.classList.add('hidden');
+      }
+    });
+
+    function renderAudit(){
+      if(!isLoggedIn) return;
+      auditBox.innerHTML = auditLog.map(x=>`<div class="border-b border-gray-200 pb-1">${x}</div>`).join('');
+    }
+
+    // Interpretation (mock bar chart, front-end only) 
+    function drawFI(){
+      const c = document.getElementById('fiChart');
+      const ctx = c.getContext('2d');
+      ctx.clearRect(0,0,c.width,c.height);
+      const features = [
+        {name:'Age', v:0.9},{name:'Fracture',v:0.8},{name:'Gender',v:0.5},
+        {name:'BMI',v:0.4},{name:'Alcohol',v:0.3},{name:'Calcium',v:0.2}
+      ];
+      const max = Math.max(...features.map(f=>f.v));
+      const w = 80, gap = 30, baseY = c.height-40, scale = (c.height-70)/max;
+      ctx.fillStyle = '#1f2937'; ctx.font = '12px Inter';
+      features.forEach((f,i)=>{
+        const x = 40 + i*(w+gap);
+        const h = f.v*scale;
+        ctx.fillStyle = '#6366f1'; ctx.fillRect(x, baseY-h, w, h);
+        ctx.fillStyle = '#374151';
+        ctx.fillText(f.name, x + w/2 - ctx.measureText(f.name).width/2, baseY+16);
+      });
+      ctx.fillStyle = '#111827'; ctx.font='14px Inter';
+      ctx.fillText('Relative feature importance (illustrative)', 20, 20);
+    }
+
+    // Evaluation: get ROC once from backend (static) 
+    let rocCached = null;
+    async function drawROC(){
+      const c = document.getElementById('rocChart');
+      const ctx = c.getContext('2d');
+      ctx.clearRect(0,0,c.width,c.height);
+
+      try{
+        if(!rocCached){
+          const r = await fetch(API_EVAL);
+          if(!r.ok) throw new Error('fetch failed');
+          rocCached = await r.json();
+        }
+        const { fpr, tpr, auc } = rocCached.roc_curve;
+        document.getElementById('aucBadge').textContent = `AUC: ${Number(auc).toFixed(3)}`;
+
+        // axes
+        ctx.strokeStyle = '#9ca3af'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(40,10); ctx.lineTo(40,c.height-30); ctx.lineTo(c.width-10,c.height-30); ctx.stroke();
+
+        // diagonal
+        ctx.setLineDash([4,4]); ctx.beginPath();
+        ctx.moveTo(40, c.height-30); ctx.lineTo(c.width-10,10); ctx.stroke(); ctx.setLineDash([]);
+
+        // roc curve
+        ctx.strokeStyle = '#6366f1'; ctx.lineWidth = 2;
+        ctx.beginPath();
+        for(let i=0;i<fpr.length;i++){
+          const x = 40 + fpr[i]*(c.width-50);
+          const y = (c.height-30) - tpr[i]*(c.height-40);
+          if(i===0) ctx.moveTo(x,y); else ctx.lineTo(x,y);
+        }
+        ctx.stroke();
+      }catch(e){
+        ctx.fillStyle = '#ef4444';
+        ctx.fillText('Failed to load ROC data', 40, 40);
+      }
+    }
+
+    // Default view
+    activateTop('public');
+  </script>
+</body>
+</html>
